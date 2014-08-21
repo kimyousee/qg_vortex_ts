@@ -5,11 +5,8 @@ slepc4py.init(sys.argv)
 from petsc4py import PETSc
 from slepc4py import SLEPc
 import numpy as np
-import scipy as sc
 import scipy.sparse as sp
 import matplotlib.pyplot as plt
-import scipy.linalg as spalg
-from scipy.sparse.linalg import eigs
 import time
 
 Print = PETSc.Sys.Print
@@ -53,6 +50,7 @@ def petscKron(A,B):
     K.assemble()
     return K
 
+
 def geometry(Nr,Nz,parms):
 
     r = np.linspace(-parms.Lr, parms.Lr, Nr+1)
@@ -81,8 +79,8 @@ def geometry(Nr,Nz,parms):
     Dz2[0,0:3] = [1,-2,1]/hz**2
     Dz2[Nz-1,Nz-3:Nz] = [1,-2,1]/hz**2
 
-    sp.dia_matrix(Dr); sp.dia_matrix(Dr2)
-    sp.dia_matrix(Dz); sp.dia_matrix(Dz2)
+    Dr = sp.csr_matrix(Dr); Dr2 = sp.csr_matrix(Dr2)
+    Dz = sp.csr_matrix(Dz); Dz2 = sp.csr_matrix(Dz2)
 
     return [Dr,Dr2,r,Dz,Dz2,z]
 
@@ -93,19 +91,19 @@ def build_Lap(r,z,Dr,Dr2,Dz,Dz2,parms):
     M  = len(z)
 
     # Dirichlet BCs:
-    D1d = sp.dia_matrix(Dr2[1:N2+1, 1:N2+1])
-    D2d = sp.dia_matrix(Dr2[1:N2+1, N-2:N2:-1])
-    E1d = sp.dia_matrix(Dr[ 1:N2+1, 1:N2+1])
-    E2d = sp.dia_matrix(Dr[ 1:N2+1, N-2:N2:-1])
+    D1d = sp.csr_matrix(Dr2[1:N2+1, 1:N2+1])
+    D2d = sp.csr_matrix(Dr2[1:N2+1, N-2:N2:-1])
+    E1d = sp.csr_matrix(Dr[ 1:N2+1, 1:N2+1])
+    E2d = sp.csr_matrix(Dr[ 1:N2+1, N-2:N2:-1])
     
     # Neumann BCs in z
     temp = -np.linalg.inv(np.array([ [Dz[0,0],Dz[0,M-1]],[Dz[M-1,0],Dz[M-1,M-1]] ]))
-    BCz1 = np.dot(temp,Dz[ [0,M-1], 1:M-1 ])
-    Dzz  = sp.dia_matrix(Dz2[1:M-1,1:M-1] + np.dot(Dz2[1:M-1,[0,M-1]],BCz1))
+    BCz1 = temp*Dz[ [0,M-1], 1:M-1 ]
+    Dzz  = sp.csr_matrix(Dz2[1:M-1,1:M-1] + Dz2[1:M-1,[0,M-1]]*BCz1)
 
     # Laplacian in polar coordinates:  d_rr + 1/r*d_r + Bu*d_zz
     # Note that this does not include the azimumthal derivative
-    R = sp.dia_matrix(np.diag(1/r[1:N2+1]))
+    R = sp.csr_matrix(np.diag(1/r[1:N2+1]))
     Lap = petscKron( (D1d+D2d+R*(E1d+E2d)).todense(), np.eye(M-2) ) + Bu*petscKron(np.eye(N2),Dzz.todense())
     
     return Lap
